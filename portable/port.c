@@ -2,6 +2,7 @@
 #include "task.h"
 
 #define portCOMPILER_TEMP_AREA_SIZE    32
+#define portINTERRUPT_INITIAL_MASK     0x80
 #define portINTERRUPT_ENABLED_MASK     0x80
 
 #define portRETURN()    asm ( "return" )
@@ -20,18 +21,23 @@ struct tskTaskControlBlock;
 typedef struct tskTaskControlBlock TCB_t;
 extern TCB_t * volatile pxCurrentTCB;
 
+uint8_t intcon, wreg, status;
+
 /*
  * Context switch.
  */
 
-#define portSAVE_CONTEXT()                                            \
+#define portSAVE_CONTEXT(forceInterrupts)                             \
     do                                                                \
     {                                                                 \
-        /* Save the registers. */                                     \
-        POSTINC1 = STATUS;                                            \
-        POSTINC1 = WREG;                                              \
-        POSTINC1 = INTCON0;                                           \
+        status = STATUS;                                              \
+        wreg = WREG;                                                  \
+        intcon = forceInterrupts | INTCON0;                           \
         portDISABLE_INTERRUPTS();                                     \
+        /* Save the registers. */                                     \
+        POSTINC1 = status;                                            \
+        POSTINC1 = wreg;                                              \
+        POSTINC1 = intcon;                                            \
         POSTINC1 = BSR;                                               \
         POSTINC1 = PCLATH;                                            \
         POSTINC1 = PCLATU;                                            \
@@ -75,9 +81,12 @@ extern TCB_t * volatile pxCurrentTCB;
         while( FSR0L > 0 )                                                   \
         {                                                                    \
             asm ( "PUSH" );                                                  \
-            TOSU = POSTDEC1;                                                 \
-            TOSH = POSTDEC1;                                                 \
-            TOSL = POSTDEC1;                                                 \
+            WREG = POSTDEC1;                                                 \
+            TOSU = WREG;                                                     \
+            WREG = POSTDEC1;                                                 \
+            TOSH = WREG;                                                     \
+            WREG = POSTDEC1;                                                 \
+            TOSL = WREG;                                                     \
             FSR0L--;                                                         \
         }                                                                    \
         /* Restore the temp area. 32 bytes long. */                          \
@@ -97,9 +106,19 @@ extern TCB_t * volatile pxCurrentTCB;
         PCLATU = POSTDEC1;                                                   \
         PCLATH = POSTDEC1;                                                   \
         BSR = POSTDEC1;                                                      \
-        if( POSTDEC1 & portINTERRUPT_ENABLED_MASK ) portENABLE_INTERRUPTS(); \
-        WREG = POSTDEC1;                                                     \
-        STATUS = INDF1;                                                      \
+        intcon = POSTDEC1;                                                   \
+        wreg = POSTDEC1;                                                     \
+        status = INDF1;                                                      \
+        if(intcon & portINTERRUPT_ENABLED_MASK )                             \
+        {                                                                    \
+            WREG = wreg;                                                     \
+            STATUS = status;                                                 \
+            asm ("RETFIE 0");                                                \
+        } else {                                                             \
+            WREG = wreg;                                                     \
+            STATUS = status;                                                 \
+            asm ("RETURN 0");                                                \
+        }                                                                    \
     } while( 0 )
 
 #define portCREATE_CONTEXT( pxTopOfStack, pxCode, pvParameters )          \
@@ -114,7 +133,7 @@ extern TCB_t * volatile pxCurrentTCB;
         /* The registers */                                               \
         POSTINC0 = ( uint8_t ) 0x00;                       /* STATUS. */  \
         POSTINC0 = ( uint8_t ) 0xBB;                       /* WREG. */    \
-        POSTINC0 = ( uint8_t ) portINTERRUPT_ENABLED_MASK; /* INTCON0 */  \
+        POSTINC0 = ( uint8_t ) portINTERRUPT_INITIAL_MASK; /* INTCON0 */  \
         POSTINC0 = ( uint8_t ) 0x00;                       /* BSR. */     \
         POSTINC0 = ( uint8_t ) 0x00;                       /* PCLATH. */  \
         POSTINC0 = ( uint8_t ) 0x00;                       /* PCLATU. */  \
@@ -141,10 +160,33 @@ extern TCB_t * volatile pxCurrentTCB;
     } while( 0 )
 /*-----------------------------------------------------------*/
 
+
+/* Custom interrupt manager copied from mcc_generated_files/interrupt_manager.c 
+ * The ISR is copied so the __interrupt() attribute is not used as the custom
+ * portSAVE_CONTEXT and portRESTORE_CONTEXT is needed instead.
+ */
+__at(0x000008) void PORT_InterruptManagerHigh (void)
+{
+    portSAVE_CONTEXT(portINTERRUPT_ENABLED_MASK);
+    
+   // interrupt handler
+    if(PIE3bits.TMR2IE == 1 && PIR3bits.TMR2IF == 1)
+    {
+        TMR2_ISR();
+    }
+    else
+    {
+        //Unhandled Interrupt
+    }
+    
+
+    portRESTORE_CONTEXT();
+}
+
 /* vPortYield performs a context switch. */
 void vPortYield( void )
 {
-    portSAVE_CONTEXT();
+    portSAVE_CONTEXT(0x00);
     vTaskSwitchContext();
     portRESTORE_CONTEXT();
 }
@@ -175,6 +217,7 @@ BaseType_t xPortStartScheduler( void )
 
     /* Does not get here. Adjust the XC8. */
     vPortAdjustCompiler();
+    PORT_InterruptManagerHigh();
 
     return pdTRUE;
 }
@@ -193,7 +236,11 @@ void vPortEndScheduler( void )
 void vPortTickCountHandler( void )
 {
     /* Increment the tick count. */
-    xTaskIncrementTick();
+    if (xTaskIncrementTick() == pdTRUE)
+    {
+        /* Switch if needed */
+        vTaskSwitchContext();
+    }
 }
 /*-----------------------------------------------------------*/
 

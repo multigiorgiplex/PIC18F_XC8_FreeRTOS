@@ -48,7 +48,7 @@
 #include "partest.h"
 
 extern void vInitializeDemo( void );
-
+static portTASK_FUNCTION( vBlockingTask, pvParameters );
 /*
                          Main application
  */
@@ -87,7 +87,34 @@ void vInitializeDemo( void )
     vParTestInitialise();
 
     /* LED Flashing demo. */
-    vStartLEDFlashTasks( tskIDLE_PRIORITY + 1 );
+    vStartLEDFlashTasks( tskIDLE_PRIORITY + 2 );
+    
+    /* Blocking task */
+    xTaskCreate( vBlockingTask, "BLOCK", configMINIMAL_STACK_SIZE, NULL, tskIDLE_PRIORITY +1, ( TaskHandle_t * ) NULL );
+}
+
+static portTASK_FUNCTION( vBlockingTask, pvParameters )
+{
+    while (1)
+    {
+        /* The following portENABLE_INTERRUPTS() call should not be there, but
+         * it's here as per an issue with the RETFIE instruction.
+         * 
+         * The code in portRESTORE_CONTEXT() does invoke a RETFIE instruction
+         * execution when returning from an interrupt, which should set the GIEH
+         * bit in the INTCON0 register.
+         * 
+         * For unknown reasons, this does not occur. As I don't have access to
+         * the target hardware (PIC18F27Q43) I'm using the provided MPLABX IDE
+         * simulator. I suspect that the simulation is wrong here.
+         * 
+         * The portENABLE_INTERRUPTS() set the GIEH bit here instead of the ISR.
+         * 
+         * Further debugging is still required.
+         */
+        
+        portENABLE_INTERRUPTS();
+    }
 }
 
 void vApplicationIdleHook( void )

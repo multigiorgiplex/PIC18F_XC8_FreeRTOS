@@ -62,18 +62,6 @@ void  INTERRUPT_Initialize (void)
 
 }
 
-void __interrupt() INTERRUPT_InterruptManagerHigh (void)
-{
-   // interrupt handler
-    if(PIE3bits.TMR2IE == 1 && PIR3bits.TMR2IF == 1)
-    {
-        TMR2_ISR();
-    }
-    else
-    {
-        //Unhandled Interrupt
-    }
-}
 
 /**
  End of File

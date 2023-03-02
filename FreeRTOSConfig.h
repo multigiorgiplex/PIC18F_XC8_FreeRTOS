@@ -45,7 +45,7 @@
 * See http://www.freertos.org/a00110.html
 *----------------------------------------------------------*/
 
-#define configUSE_PREEMPTION                         0
+#define configUSE_PREEMPTION                         1
 #define configCPU_CLOCK_HZ                           _XTAL_FREQ
 #define configTICK_RATE_HZ                           1000
 #define configMAX_PRIORITIES                         4

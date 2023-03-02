@@ -39,6 +39,22 @@ is incomplete, and then the task context could be saved on the bad location.
 This is a very small window but cannot be ignored.
 So I decided this port is for the cooperative scheduler only.
 
+### Pre-emptive branch
+
+An extension of this porting aimed at adding preemptive support is present under
+the branch `preemption`.
+
+The code that contains the critical sections mentioned above is still there, the
+occurrences can be checked in the .lst file.
+
+By checking the state of the `INTCON0.GIEH` bit with the simulator, every time the
+critical code gets executed, the interrupts are inhibited, or it's an ISR itself.
+
+This suggests that the XC8 compiler could be aware of the state of the interrupts
+while dealing with the stack, and so put the critical code only when the interrupts
+are disabled.
+
+This is still a speculation and needs further analysis.
 
 ## Context switching time
 
@@ -75,6 +91,14 @@ Open your git cloned folder with MPLAB X IDE.
 - MPLAB Code Configurator 5.0.3
 ```
 
+### Note on pre-emptive branch
+Under the `preemption` branch, the demo has been extended with a blocking task
+`vBlockingTask` which has a lower priority than the `vLEDFlashTask`s.
+
+When the scheduler is working in cooperative mode, the blocking task blocks the
+system and prevents other tasks from running.
+
+When the scheduler is working in preemptive mode, all the tasks get CPU time.
 
 ## Adjusting the compiler
 
